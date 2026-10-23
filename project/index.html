@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lab 3: Standardized Clinical Charting (eNCPT)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+            },
+            clinical: {
+              bg: '#f8fafc',
+              card: '#ffffff',
+              border: '#e2e8f0',
+              accent: '#0284c7',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- React & React DOM Standalone -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Babel Standalone for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    code, pre {
+      font-family: 'Fira Code', monospace;
+    }
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+    .dark ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      body { background: white !important; color: black !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useCallback } = React;
+
+    // --- ENCPT STANDARDIZED TERMINOLOGY DICTIONARY ---
+    const eNCPT_TERMS = {
+      diagnosisCodes: [
+        { code: "NI-2.1", name: "Inadequate oral intake", domain: "Intake (NI)", etiologySuggest: "Decreased appetite, nausea, oral pain, swallowing difficulty" },
+        { code: "NI-5.1", name: "Inadequate protein-energy intake", domain: "Intake (NI)", etiologySuggest: "Increased nutrient needs, acute illness, poor appetite" },
+        { code: "NI-5.4", name: "Inappropriate intake of types of fats", domain: "Intake (NI)", etiologySuggest: "Lack of food- and nutrition-related knowledge, frequent dining out" },
+        { code: "NI-5.1.2", name: "Excessive mineral intake (Potassium)", domain: "Intake (NI)", etiologySuggest: "High dietary intake of potassium-rich foods in renal impairment" },
+        { code: "NC-2.2", name: "Altered nutrition-related laboratory values", domain: "Clinical (NC)", etiologySuggest: "Endocrine dysfunction, renal disease, altered metabolic state" },
+        { code: "NC-3.1", name: "Unintended weight loss", domain: "Clinical (NC)", etiologySuggest: "Inadequate caloric intake, hypermetabolism, malabsorption" },
+        { code: "NB-1.1", name: "Food- and nutrition-related knowledge deficit", domain: "Behavioral-Environmental (NB)", etiologySuggest: "Lack of prior formal nutrition education, conflicting information sources" }
+      ],
+      interventions: {
+        ND: ["ND-1.1 General/Healthful Diet", "ND-1.2 Modify distribution/type of food/nutrients", "ND-1.3 Energy-modified diet", "ND-3.1 Medical Food Supplement"],
+        E: ["E-1.1 Initial/brief nutrition education", "E-2.1 Comprehensive nutrition education", "E-2.2 Skill development"],
+        C: ["C-1.1 Cognitive-behavioral approach", "C-1.2 Motivational interviewing", "C-2.1 Goal setting"],
+        RC: ["RC-1.1 Prescription/referral for nutrition care", "RC-2.1 Collaboration with other providers"]
+      },
+      monitoringIndicators: [
+        "ME-1.1 Dietary Intake (Calories, Protein, Fat, Sodium, Potassium)",
+        "ME-2.1 Body Weight & BMI Change",
+        "ME-3.1 Glycemic Indicators (HbA1c, Fasting Blood Glucose)",
+        "ME-3.2 Renal Profile (eGFR, Serum Creatinine, Serum Potassium)",
+        "ME-3.3 Lipid Profile (LDL, HDL, Triglycerides)",
+        "ME-4.1 Physical Signs of Malnutrition (Muscle wasting, Fat loss)"
+      ]
+    };
+
+    // --- PRE-LOADED CASE STUDIES ---
+    const SAMPLE_CASES = {
+      case1: {
+        title: "Case 1: Type 2 Diabetes with Uncontrolled Glycemia & Hyperlipidemia",
+        patient: { name: "Robert Vance", age: 54, gender: "Male", mrn: "EHR-99201", setting: "Outpatient Clinic" },
+        assessment: {
+          FH: "Consumes high carbohydrate, high saturated fat diets. Skips breakfast; drinks 2-3 sweetened sodas daily. Minimal physical activity.",
+          AD: "Height: 175 cm, Weight: 96.2 kg, BMI: 31.4 kg/m² (Obese Class I). Weight gain of 4.5 kg in past 6 months.",
+          BD: "HbA1c: 10.2% (High), Fasting Blood Glucose: 210 mg/dL, LDL Cholesterol: 165 mg/dL, Triglycerides: 240 mg/dL.",
+          PD: "Acanthosis nigricans observed on posterior neck. No peripheral edema noted.",
+          CH: "Diagnosed with Type 2 Diabetes 3 years ago; non-adherent to metformin. Family history of CAD."
+        },
+        pes: {
+          problemCode: "NC-2.2",
+          problemName: "Altered nutrition-related laboratory values",
+          etiology: "Inconsistent carbohydrate distribution and high intake of refined sugars and saturated fats",
+          signsSymptoms: "Elevated HbA1c of 10.2% and fasting blood glucose of 210 mg/dL"
+        },
+        intervention: {
+          domain: "E",
+          code: "E-2.1 Comprehensive nutrition education",
+          details: "Provide consistent carbohydrate meal planning education (45-60g carb/meal). Recommend replacing sugar-sweetened sodas with water/unsweetened teas. Discuss cardiac-healthy fat substitutions.",
+          targetGoal: "Reduce HbA1c to < 7.5% within 3 months; eliminate soda intake."
+        },
+        monitoring: {
+          indicator: "ME-3.1 Glycemic Indicators (HbA1c, Fasting Blood Glucose)",
+          targetCriteria: "HbA1c < 7.5%, Fasting FBG < 130 mg/dL, 100% elimination of SSB",
+          targetDate: "2026-12-15",
+          status: "Improving",
+          followUpNotes: "Recheck HbA1c and lipid panel in 12 weeks. Schedule follow-up with RD in 4 weeks."
+        }
+      },
+      case2: {
+        title: "Case 2: Elderly Patient with Acute Malnutrition & Severe Weight Loss",
+        patient: { name: "Margaret Chen", age: 78, gender: "Female", mrn: "EHR-44312", setting: "Inpatient Acute Care" },
+        assessment: {
+          FH: "Reports poor appetite following recent loss of spouse. Eats < 1 meal daily, primarily tea and toast. Caloric intake ~600 kcal/day (<50% estimated needs).",
+          AD: "Height: 160 cm, Weight: 44.0 kg, BMI: 17.2 kg/m² (Underweight). Severe weight loss of 12% in past 3 months.",
+          BD: "Serum Albumin: 2.8 g/dL (Low), Prealbumin: 11 mg/dL (Low), BUN: 28 mg/dL.",
+          PD: "Visible temporal wasting, hollow supraclavicular clavicles, orbital fat loss, 1+ bilateral ankle edema.",
+          CH: "Lives alone; mild hypertension. Poorly fitting lower dentures."
+        },
+        pes: {
+          problemCode: "NI-5.1",
+          problemName: "Inadequate protein-energy intake",
+          etiology: "Psychosocial distress, poor dentition fit, and social isolation resulting in severely restricted oral intake",
+          signsSymptoms: "Unintended weight loss of 12% over 3 months, BMI 17.2, and estimated intake < 50% of requirements"
+        },
+        intervention: {
+          domain: "ND",
+          code: "ND-3.1 Medical Food Supplement",
+          details: "Initiate high-protein oral nutritional supplement (220 kcal, 13g protein per bottle) BID between meals. Modify diet texture to soft/easy to chew. Referral to social services for Meals on Wheels.",
+          targetGoal: "Achieve 1800 kcal and 75g protein daily. Halt weight loss."
+        },
+        monitoring: {
+          indicator: "ME-2.1 Body Weight & BMI Change",
+          targetCriteria: "Weight stabilization at >= 45 kg, 100% ONS compliance",
+          targetDate: "2026-11-30",
+          status: "Unchanged",
+          followUpNotes: "Weekly weight logs during inpatient stay; daily calorie count for 72 hours."
+        }
+      },
+      case3: {
+        title: "Case 3: Chronic Kidney Disease (Stage 4) with Hyperkalemia",
+        patient: { name: "Arthur Pendelton", age: 66, gender: "Male", mrn: "EHR-88104", setting: "Nephrology Outpatient" },
+        assessment: {
+          FH: "Consumes frequent high-potassium foods (bananas, potatoes, tomatoes, nuts). High sodium intake from canned soups.",
+          AD: "Height: 172 cm, Weight: 81.0 kg, BMI: 27.4 kg/m² (Overweight). No acute weight changes.",
+          BD: "eGFR: 22 mL/min/1.73m² (CKD Stage 4), Serum Potassium: 5.8 mEq/L (High), BUN: 48 mg/dL, Creatinine: 2.9 mg/dL.",
+          PD: "Mild pre-tibial edema (+1). No signs of acute muscle wasting.",
+          CH: "CKD Stage 4, Longstanding Hypertension, Type 2 Diabetes."
+        },
+        pes: {
+          problemCode: "NI-5.1.2",
+          problemName: "Excessive mineral intake (Potassium)",
+          etiology: "Dietary consumption of high-potassium food items in the setting of severely reduced renal potassium clearance",
+          signsSymptoms: "Serum potassium elevated at 5.8 mEq/L with eGFR of 22 mL/min/1.73m²"
+        },
+        intervention: {
+          domain: "ND",
+          code: "ND-1.2 Modify distribution/type of food/nutrients",
+          details: "Prescribe Stage 4 CKD Renal Diet: Restrict dietary potassium to 2,000 mg/day, sodium to < 2,000 mg/day, and controlled protein (0.6-0.8 g/kg/day). Provide high/low potassium food reference guide.",
+          targetGoal: "Normalize serum potassium to < 5.0 mEq/L."
+        },
+        monitoring: {
+          indicator: "ME-3.2 Renal Profile (eGFR, Serum Creatinine, Serum Potassium)",
+          targetCriteria: "Serum potassium 4.0 - 5.0 mEq/L, stable eGFR",
+          targetDate: "2026-11-15",
+          status: "Improving",
+          followUpNotes: "Repeat serum potassium and renal panel in 14 days."
+        }
+      }
+    };
+
+    // --- MASTER JSON SCHEMA (eNCPT_Master_Schema.json) ---
+    const MASTER_JSON_SCHEMA = {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "eNCPT_Master_Clinical_Note_Schema",
+      "type": "object",
+      "required": ["patient", "assessment", "diagnosis", "intervention", "monitoring"],
+      "properties": {
+        "patient": {
+          "type": "object",
+          "required": ["name", "mrn", "age", "gender"],
+          "properties": {
+            "name": { "type": "string" },
+            "age": { "type": "integer", "minimum": 0 },
+            "gender": { "type": "string" },
+            "mrn": { "type": "string" },
+            "setting": { "type": "string" }
+          }
+        },
+        "assessment": {
+          "type": "object",
+          "required": ["FH", "AD", "BD", "PD", "CH"],
+          "properties": {
+            "FH": { "type": "string", "description": "Food/Nutrition-Related History" },
+            "AD": { "type": "string", "description": "Anthropometric Measurements" },
+            "BD": { "type": "string", "description": "Biochemical Data, Medical Tests, Procedures" },
+            "PD": { "type": "string", "description": "Nutrition-Focused Physical Findings" },
+            "CH": { "type": "string", "description": "Client History" }
+          }
+        },
+        "diagnosis": {
+          "type": "object",
+          "required": ["problemCode", "problemName", "etiology", "signsSymptoms"],
+          "properties": {
+            "problemCode": { "type": "string", "pattern": "^N[I|C|B]-[0-9]+(\\.[0-9]+)*$" },
+            "problemName": { "type": "string" },
+            "etiology": { "type": "string", "minLength": 5 },
+            "signsSymptoms": { "type": "string", "minLength": 5 }
+          }
+        },
+        "intervention": {
+          "type": "object",
+          "required": ["domain", "code", "details"],
+          "properties": {
+            "domain": { "type": "string", "enum": ["ND", "E", "C", "RC"] },
+            "code": { "type": "string" },
+            "details": { "type": "string" },
+            "targetGoal": { "type": "string" }
+          }
+        },
+        "monitoring": {
+          "type": "object",
+          "required": ["indicator", "targetCriteria", "status"],
+          "properties": {
+            "indicator": { "type": "string" },
+            "targetCriteria": { "type": "string" },
+            "targetDate": { "type": "string", "format": "date" },
+            "status": { "type": "string", "enum": ["Resolved", "Improving", "Unchanged", "Deteriorated"] },
+            "followUpNotes": { "type": "string" }
+          }
+        }
+      }
+    };
+
+    // --- SVG ICON COMPONENT ---
+    const Icon = ({ name, className = "w-5 h-5" }) => {
+      const icons = {
+        stethoscope: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />,
+        code: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />,
+        send: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />,
+        fileText: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />,
+        checklist: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />,
+        check: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />,
+        alertCircle: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        copy: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />,
+        download: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />,
+        printer: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />,
+        play: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />,
+        moon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />,
+        sun: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+      };
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          {icons[name] || null}
+        </svg>
+      );
+    };
+
+    // --- MAIN APP COMPONENT ---
+    function App() {
+      const [darkMode, setDarkMode] = useState(false);
+      const [activeTab, setActiveTab] = useState("charting"); // charting, schema, postman, ehrNote, labGuide
+      const [activeStep, setActiveStep] = useState("AD"); // AD, ND, NI, ME
+      const [toastMessage, setToastMessage] = useState(null);
+
+      // --- CLINICAL STATE ---
+      const [chartData, setChartData] = useState(SAMPLE_CASES.case1);
+
+      // --- LAB CHECKLIST STATE ---
+      const [labChecklist, setLabChecklist] = useState([
+        { id: 1, text: "Review eNCPT ADIME Domains & Taxonomy Structure", done: true, time: "15 mins" },
+        { id: 2, text: "Input Patient Assessment Data (FH, AD, BD, PD, CH)", done: true, time: "20 mins" },
+        { id: 3, text: "Select official eNCPT Diagnosis Code & Construct PES Statement", done: false, time: "20 mins" },
+        { id: 4, text: "Validate PES syntax (Problem + Etiology + Signs & Symptoms)", done: false, time: "10 mins" },
+        { id: 5, text: "Assign Standardized Nutrition Interventions (ND/E/C/RC)", done: false, time: "15 mins" },
+        { id: 6, text: "Define Monitoring Indicators, Target Criteria, & Target Date", done: false, time: "10 mins" },
+        { id: 7, text: "Inspect Live JSON Schema Synchronization", done: false, time: "10 mins" },
+        { id: 8, text: "Execute Postman API Simulations & Export Collection v2.1 JSON", done: false, time: "10 mins" }
+      ]);
+
+      // --- POSTMAN SIMULATOR STATE ---
+      const [apiMethod, setApiMethod] = useState("POST");
+      const [apiEndpoint, setApiEndpoint] = useState("/api/v1/charting/adime");
+      const [apiResponse, setApiResponse] = useState(null);
+      const [isApiLoading, setIsApiLoading] = useState(false);
+
+      // --- TOAST NOTIFICATION HELPERS ---
+      const showToast = (msg) => {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(null), 3500);
+      };
+
+      // --- DARK MODE TOGGLE ---
+      useEffect(() => {
+        if (darkMode) {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
+      }, [darkMode]);
+
+      // --- PES REAL-TIME VALIDATION ENGINE ---
+      const pesValidation = useMemo(() => {
+        const { problemCode, problemName, etiology, signsSymptoms } = chartData.pes;
+        const issues = [];
+        let score = 100;
+
+        if (!problemCode || !problemName) {
+          issues.push("Missing official eNCPT Problem Code.");
+          score -= 30;
+        }
+        if (!etiology || etiology.trim().length < 8) {
+          issues.push("Etiology is too short or missing (e.g. root cause).");
+          score -= 35;
+        }
+        if (!signsSymptoms || signsSymptoms.trim().length < 8) {
+          issues.push("Signs & Symptoms are incomplete or missing clinical evidence.");
+          score -= 35;
+        } else {
+          // Check for numbers/clinical indicators in signs/symptoms
+          const hasNumbers = /\d+/.test(signsSymptoms);
+          if (!hasNumbers) {
+            issues.push("Recommendation: Include specific quantitative lab values, %, or measurements in Signs & Symptoms.");
+          }
+        }
+
+        const formattedPES = `${problemCode} ${problemName} related to ${etiology || "[Etiology]"} as evidenced by ${signsSymptoms || "[Signs & Symptoms]"}.`;
+
+        return {
+          isValid: issues.length === 0 || (issues.length === 1 && issues[0].startsWith("Recommendation")),
+          score: Math.max(0, score),
+          issues,
+          formattedPES
+        };
+      }, [chartData.pes]);
+
+      // --- LOAD CASE STUDY ---
+      const handleLoadCase = (caseKey) => {
+        setChartData(JSON.parse(JSON.stringify(SAMPLE_CASES[caseKey])));
+        showToast(`Loaded ${SAMPLE_CASES[caseKey].title}`);
+      };
+
+      // --- POSTMAN SIMULATOR EXECUTION ---
+      const handleRunPostmanRequest = () => {
+        setIsApiLoading(true);
+        setApiResponse(null);
+
+        setTimeout(() => {
+          setIsApiLoading(false);
+          if (apiEndpoint === "/api/v1/charting/adime" && apiMethod === "POST") {
+            setApiResponse({
+              status: 201,
+              statusText: "Created",
+              responseTime: "184 ms",
+              headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "x-encpt-version": "2026.1",
+                "x-schema-validation": "PASSED"
+              },
+              body: {
+                success: true,
+                message: "Standardized eNCPT Clinical Note successfully ingested into EHR database.",
+                recordId: "REC-" + Math.floor(100000 + Math.random() * 900000),
+                timestamp: new Date().toISOString(),
+                pesValidationStatus: pesValidation.isValid ? "VALIDATED" : "WARNING",
+                data: chartData
+              }
+            });
+          } else if (apiEndpoint === "/api/v1/encpt/terms" && apiMethod === "GET") {
+            setApiResponse({
+              status: 200,
+              statusText: "OK",
+              responseTime: "92 ms",
+              headers: { "Content-Type": "application/json" },
+              body: eNCPT_TERMS
+            });
+          } else if (apiEndpoint === "/api/v1/pes/validate" && apiMethod === "POST") {
+            setApiResponse({
+              status: 200,
+              statusText: "OK",
+              responseTime: "115 ms",
+              headers: { "Content-Type": "application/json" },
+              body: {
+                pesSyntaxScore: `${pesValidation.score}%`,
+                isValid: pesValidation.isValid,
+                formattedPES: pesValidation.formattedPES,
+                syntaxFeedback: pesValidation.issues
+              }
+            });
+          } else {
+            setApiResponse({
+              status: 404,
+              statusText: "Not Found",
+              responseTime: "45 ms",
+              headers: { "Content-Type": "application/json" },
+              body: { error: "Unknown Endpoint requested in eNCPT API sandbox." }
+            });
+          }
+        }, 350);
+      };
+
+      // --- EXPORT POSTMAN COLLECTION V2.1 JSON ---
+      const handleExportPostmanCollection = () => {
+        const collection = {
+          info: {
+            name: "Lab 3 - eNCPT Clinical Charting API",
+            _postman_id: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+            description: "Official Postman Collection for Lab 3 Standardized Clinical Charting using eNCPT terminology.",
+            schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          item: [
+            {
+              name: "1. Ingest ADIME Clinical Note",
+              request: {
+                method: "POST",
+                header: [{ key: "Content-Type", value: "application/json" }],
+                body: {
+                  mode: "raw",
+                  raw: JSON.stringify(chartData, null, 2)
+                },
+                url: {
+                  raw: "https://api.hospital-ehr.org/api/v1/charting/adime",
+                  protocol: "https",
+                  host: ["api", "hospital-ehr", "org"],
+                  path: ["api", "v1", "charting", "adime"]
+                }
+              }
+            },
+            {
+              name: "2. Fetch eNCPT Standardized Vocabulary",
+              request: {
+                method: "GET",
+                header: [],
+                url: {
+                  raw: "https://api.hospital-ehr.org/api/v1/encpt/terms",
+                  protocol: "https",
+                  host: ["api", "hospital-ehr", "org"],
+                  path: ["api", "v1", "encpt", "terms"]
+                }
+              }
+            },
+            {
+              name: "3. Validate PES Statement Syntax",
+              request: {
+                method: "POST",
+                header: [{ key: "Content-Type", value: "application/json" }],
+                body: {
+                  mode: "raw",
+                  raw: JSON.stringify(chartData.pes, null, 2)
+                },
+                url: {
+                  raw: "https://api.hospital-ehr.org/api/v1/pes/validate",
+                  protocol: "https",
+                  host: ["api", "hospital-ehr", "org"],
+                  path: ["api", "v1", "pes", "validate"]
+                }
+              }
+            }
+          ]
+        };
+
+        const blob = new Blob([JSON.stringify(collection, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "eNCPT_Lab3_Postman_Collection.json";
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("Postman Collection v2.1 JSON downloaded!");
+      };
+
+      // --- EXPORT ADIME EHR NOTE IN VARIOUS FORMATS ---
+      const handleCopyNote = () => {
+        const text = `================================================
+EHR CLINICAL NUTRITION NOTE (ADIME / eNCPT)
+================================================
+PATIENT: ${chartData.patient.name} | Age: ${chartData.patient.age} | Gender: ${chartData.patient.gender}
+MRN: ${chartData.patient.mrn} | Care Setting: ${chartData.patient.setting}
+------------------------------------------------
+[A - ASSESSMENT]
+• Food/Nutrition History (FH): ${chartData.assessment.FH}
+• Anthropometric Measurements (AD): ${chartData.assessment.AD}
+• Biochemical Data (BD): ${chartData.assessment.BD}
+• Physical Findings (PD): ${chartData.assessment.PD}
+• Client History (CH): ${chartData.assessment.CH}
+
+[D - DIAGNOSIS (PES Statement)]
+${pesValidation.formattedPES}
+
+[I - INTERVENTION]
+• Domain: ${chartData.intervention.domain} - ${chartData.intervention.code}
+• Prescription: ${chartData.intervention.details}
+• Target Goal: ${chartData.intervention.targetGoal}
+
+[M/E - MONITORING & EVALUATION]
+• Indicator: ${chartData.monitoring.indicator}
+• Target Criteria: ${chartData.monitoring.targetCriteria}
+• Target Date: ${chartData.monitoring.targetDate}
+• Progress Status: ${chartData.monitoring.status}
+• Follow-up: ${chartData.monitoring.followUpNotes}
+================================================`;
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        showToast("Formatted ADIME EHR Note copied to clipboard!");
+      };
+
+      const handleDownloadMarkdown = () => {
+        const md = `# EHR Clinical Nutrition Note (eNCPT ADIME Standard)
+
+**Patient Name:** ${chartData.patient.name}  
+**MRN:** ${chartData.patient.mrn} | **Age/Gender:** ${chartData.patient.age} ${chartData.patient.gender} | **Setting:** ${chartData.patient.setting}
+
+---
+
+## 1. Assessment (AD)
+* **Food & Nutrition History (FH):** ${chartData.assessment.FH}
+* **Anthropometric Data (AD):** ${chartData.assessment.AD}
+* **Biochemical Data (BD):** ${chartData.assessment.BD}
+* **Nutrition Physical Findings (PD):** ${chartData.assessment.PD}
+* **Client History (CH):** ${chartData.assessment.CH}
+
+## 2. Nutrition Diagnosis (ND - PES Statement)
+> **${pesValidation.formattedPES}**
+
+## 3. Nutrition Intervention (NI)
+* **Domain & Code:** \`${chartData.intervention.domain}\` - ${chartData.intervention.code}
+* **Details:** ${chartData.intervention.details}
+* **Target Goal:** ${chartData.intervention.targetGoal}
+
+## 4. Monitoring & Evaluation (ME)
+* **Indicator:** ${chartData.monitoring.indicator}
+* **Target Benchmark:** ${chartData.monitoring.targetCriteria}
+* **Evaluation Date:** ${chartData.monitoring.targetDate}
+* **Progress Status:** \`${chartData.monitoring.status}\`
+* **Follow-up Plan:** ${chartData.monitoring.followUpNotes}
+`;
+        const blob = new Blob([md], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `EHR_ADIME_${chartData.patient.mrn}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("Markdown clinical note exported!");
+      };
+
+      const handleDownloadJSON = () => {
+        const blob = new Blob([JSON.stringify(chartData, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `eNCPT_Chart_${chartData.patient.mrn}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("Raw JSON payload exported!");
+      };
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          {/* TOAST NOTIFICATION */}
+          {toastMessage && (
+            <div className="fixed bottom-5 right-5 z-50 bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-semibold animate-bounce">
+              <Icon name="check" className="w-5 h-5 text-emerald-400 dark:text-emerald-600" />
+              <span>{toastMessage}</span>
+            </div>
+          )}
+
+          {/* TOP NAV HEADER */}
+          <header className="no-print bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-40 shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-brand-600 text-white rounded-xl shadow-md">
+                  <Icon name="stethoscope" className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-bold text-slate-900 dark:text-white">Lab 3: eNCPT Clinical Charting</h1>
+                    <span className="text-xs bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 font-semibold px-2 py-0.5 rounded-full border border-brand-200 dark:border-brand-700">
+                      Nutrition Informatics
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Standardized Nutrition Care Process Terminology (eNCPT) ADIME Engine</p>
+                </div>
+              </div>
+
+              {/* CASE PRESET LOADERS & ACTIONS */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider hidden md:inline">Quick Cases:</span>
+                <button
+                  onClick={() => handleLoadCase("case1")}
+                  className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition"
+                >
+                  Case 1: T2D
+                </button>
+                <button
+                  onClick={() => handleLoadCase("case2")}
+                  className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition"
+                >
+                  Case 2: Malnutrition
+                </button>
+                <button
+                  onClick={() => handleLoadCase("case3")}
+                  className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition"
+                >
+                  Case 3: CKD Stage 4
+                </button>
+
+                <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  title="Toggle Dark Mode"
+                >
+                  <Icon name={darkMode ? "sun" : "moon"} className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* TAB NAVIGATION */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-slate-100 dark:border-slate-700/50">
+              <nav className="flex space-x-2 sm:space-x-6 overflow-x-auto py-2">
+                {[
+                  { id: "charting", label: "1. ADIME Charting Builder", icon: "stethoscope" },
+                  { id: "schema", label: "2. Live JSON Schema", icon: "code" },
+                  { id: "postman", label: "3. Postman API Simulator", icon: "send" },
+                  { id: "ehrNote", label: "4. Standardized EHR Note", icon: "fileText" },
+                  { id: "labGuide", label: "5. Lab Guide & Checklist", icon: "checklist" }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg whitespace-nowrap transition-colors ${
+                      activeTab === tab.id
+                        ? "bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <Icon name={tab.icon} className="w-4 h-4" />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </header>
+
+          {/* MAIN CONTAINER */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            
+            {/* ======================================================== */}
+            {/* TAB 1: ADIME CHARTING BUILDER                            */}
+            {/* ======================================================== */}
+            {activeTab === "charting" && (
+              <div className="space-y-6">
+                
+                {/* PATIENT DEMOGRAPHICS HEADER CARD */}
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Patient EHR Profile</h2>
+                    <span className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-md font-semibold text-slate-600 dark:text-slate-300">
+                      ID: {chartData.patient.mrn}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Full Name</label>
+                      <input
+                        type="text"
+                        value={chartData.patient.name}
+                        onChange={(e) => setChartData({ ...chartData, patient: { ...chartData.patient, name: e.target.value } })}
+                        className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Age</label>
+                      <input
+                        type="number"
+                        value={chartData.patient.age}
+                        onChange={(e) => setChartData({ ...chartData, patient: { ...chartData.patient, age: parseInt(e.target.value) || 0 } })}
+                        className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Gender</label>
+                      <select
+                        value={chartData.patient.gender}
+                        onChange={(e) => setChartData({ ...chartData, patient: { ...chartData.patient, gender: e.target.value } })}
+                        className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500"
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Medical Record #</label>
+                      <input
+                        type="text"
+                        value={chartData.patient.mrn}
+                        onChange={(e) => setChartData({ ...chartData, patient: { ...chartData.patient, mrn: e.target.value } })}
+                        className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Care Setting</label>
+                      <input
+                        type="text"
+                        value={chartData.patient.setting}
+                        onChange={(e) => setChartData({ ...chartData, patient: { ...chartData.patient, setting: e.target.value } })}
+                        className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ADIME STEP SELECTION SUB-TABS */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { id: "AD", title: "Step 1: Assessment", desc: "FH, AD, BD, PD, CH Domains", color: "border-sky-500 text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40" },
+                    { id: "ND", title: "Step 2: Diagnosis", desc: "Guided PES Statement Builder", color: "border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40" },
+                    { id: "NI", title: "Step 3: Intervention", desc: "ND, E, C, RC Domains", color: "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40" },
+                    { id: "ME", title: "Step 4: Monitoring", desc: "Indicators & Target Goals", color: "border-purple-500 text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40" }
+                  ].map((step) => (
+                    <button
+                      key={step.id}
+                      onClick={() => setActiveStep(step.id)}
+                      className={`p-4 rounded-xl border-2 text-left transition-all ${
+                        activeStep === step.id
+                          ? `${step.color} shadow-md`
+                          : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="text-xs font-bold uppercase tracking-wider mb-1">{step.id} Phase</div>
+                      <div className="font-semibold text-sm mb-0.5">{step.title}</div>
+                      <div className="text-xs opacity-80 line-clamp-1">{step.desc}</div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* STEP 1: ASSESSMENT (AD) */}
+                {activeStep === "AD" && (
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-5">
+                    <div className="border-b border-slate-100 dark:border-slate-700 pb-3">
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+                        Step 1: Nutrition Assessment (Standardized eNCPT Domains)
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Organize patient clinical data under the 5 standard eNCPT Assessment domains.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {/* FH */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">
+                          <span>Food / Nutrition-Related History (FH)</span>
+                          <span className="text-sky-600 dark:text-sky-400 font-mono text-[10px]">FH-1.1 - FH-7.3</span>
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={chartData.assessment.FH}
+                          onChange={(e) => setChartData({ ...chartData, assessment: { ...chartData.assessment, FH: e.target.value } })}
+                          placeholder="Dietary intake, energy/macronutrient patterns, beverage intake, physical activity..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+
+                      {/* AD */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">
+                          <span>Anthropometric Measurements (AD)</span>
+                          <span className="text-sky-600 dark:text-sky-400 font-mono text-[10px]">AD-1.1</span>
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={chartData.assessment.AD}
+                          onChange={(e) => setChartData({ ...chartData, assessment: { ...chartData.assessment, AD: e.target.value } })}
+                          placeholder="Height, Weight, BMI, Weight history, % weight change over timeframe..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+
+                      {/* BD */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">
+                          <span>Biochemical Data, Medical Tests, Procedures (BD)</span>
+                          <span className="text-sky-600 dark:text-sky-400 font-mono text-[10px]">BD-1.1 - BD-1.10</span>
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={chartData.assessment.BD}
+                          onChange={(e) => setChartData({ ...chartData, assessment: { ...chartData.assessment, BD: e.target.value } })}
+                          placeholder="Lab values: Glucose, HbA1c, Electrolytes, Renal markers (eGFR, BUN), Lipids, Albumin..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+
+                      {/* PD */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">
+                          <span>Nutrition-Focused Physical Findings (PD)</span>
+                          <span className="text-sky-600 dark:text-sky-400 font-mono text-[10px]">PD-1.1</span>
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={chartData.assessment.PD}
+                          onChange={(e) => setChartData({ ...chartData, assessment: { ...chartData.assessment, PD: e.target.value } })}
+                          placeholder="Muscle wasting, subcutaneous fat loss, edema, oral health, dentition, skin integrity..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+
+                      {/* CH */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 md:col-span-2">
+                        <label className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">
+                          <span>Client History (CH)</span>
+                          <span className="text-sky-600 dark:text-sky-400 font-mono text-[10px]">CH-1.1 - CH-3.1</span>
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={chartData.assessment.CH}
+                          onChange={(e) => setChartData({ ...chartData, assessment: { ...chartData.assessment, CH: e.target.value } })}
+                          placeholder="Personal history, medical/surgical history, medication history, social background, living situation..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => setActiveStep("ND")}
+                        className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-md"
+                      >
+                        <span>Proceed to Diagnosis & PES Builder</span>
+                        <span>&rarr;</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 2: DIAGNOSIS (ND) & GUIDED PES BUILDER */}
+                {activeStep === "ND" && (
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+                    <div className="border-b border-slate-100 dark:border-slate-700 pb-3">
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        Step 2: Guided PES Statement Builder (Nutrition Diagnosis)
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Construct a standardized PES statement: <strong>[Problem]</strong> related to <strong>[Etiology]</strong> as evidenced by <strong>[Signs & Symptoms]</strong>.
+                      </p>
+                    </div>
+
+                    {/* REAL-TIME VALIDATION BANNER */}
+                    <div className={`p-4 rounded-xl border ${
+                      pesValidation.isValid
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
+                        : "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200"
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 font-bold text-sm">
+                          <Icon name={pesValidation.isValid ? "check" : "alertCircle"} className="w-5 h-5" />
+                          <span>PES Syntax Validation Score: {pesValidation.score}%</span>
+                        </div>
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                          pesValidation.isValid ? "bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100" : "bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-100"
+                        }`}>
+                          {pesValidation.isValid ? "Valid Syntax" : "Needs Revision"}
+                        </span>
+                      </div>
+
+                      {pesValidation.issues.length > 0 && (
+                        <ul className="text-xs space-y-1 mt-1 pl-6 list-disc opacity-90">
+                          {pesValidation.issues.map((issue, idx) => (
+                            <li key={idx}>{issue}</li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* LIVE FORMATTED PREVIEW */}
+                      <div className="mt-3 p-3 bg-white/80 dark:bg-slate-900/80 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+                        <span className="text-slate-400 uppercase tracking-widest font-sans font-bold block mb-1">Live Formatted PES Statement:</span>
+                        {pesValidation.formattedPES}
+                      </div>
+                    </div>
+
+                    {/* PES FORM FIELDS */}
+                    <div className="space-y-5">
+                      {/* PROBLEM (P) */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 uppercase mb-2">
+                          1. Nutrition Problem (P) - Standardized eNCPT Code
+                        </label>
+                        <select
+                          value={chartData.pes.problemCode}
+                          onChange={(e) => {
+                            const selected = eNCPT_TERMS.diagnosisCodes.find(item => item.code === e.target.value);
+                            if (selected) {
+                              setChartData({
+                                ...chartData,
+                                pes: {
+                                  ...chartData.pes,
+                                  problemCode: selected.code,
+                                  problemName: selected.name,
+                                  etiology: chartData.pes.etiology || selected.etiologySuggest
+                                }
+                              });
+                            }
+                          }}
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 font-medium"
+                        >
+                          <option value="">-- Select Standardized eNCPT Diagnosis Code --</option>
+                          {eNCPT_TERMS.diagnosisCodes.map((d) => (
+                            <option key={d.code} value={d.code}>
+                              [{d.code}] {d.name} ({d.domain})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* ETIOLOGY (E) */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 uppercase mb-2">
+                          2. Etiology (E) - "related to..."
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={chartData.pes.etiology}
+                          onChange={(e) => setChartData({ ...chartData, pes: { ...chartData.pes, etiology: e.target.value } })}
+                          placeholder="Describe the underlying cause or contributing risk factors (e.g., lack of knowledge, altered metabolic state, limited access)..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+
+                      {/* SIGNS & SYMPTOMS (S) */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 uppercase mb-2">
+                          3. Signs & Symptoms (S) - "as evidenced by..."
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={chartData.pes.signsSymptoms}
+                          onChange={(e) => setChartData({ ...chartData, pes: { ...chartData.pes, signsSymptoms: e.target.value } })}
+                          placeholder="Provide specific quantitative labs, physical findings, or intake percentages (e.g., HbA1c of 10.2%, 12% weight loss)..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between pt-2">
+                      <button
+                        onClick={() => setActiveStep("AD")}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold transition"
+                      >
+                        &larr; Back to Assessment
+                      </button>
+                      <button
+                        onClick={() => setActiveStep("NI")}
+                        className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-md"
+                      >
+                        <span>Proceed to Intervention</span>
+                        <span>&rarr;</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3: INTERVENTION (NI) */}
+                {activeStep === "NI" && (
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+                    <div className="border-b border-slate-100 dark:border-slate-700 pb-3">
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        Step 3: Nutrition Intervention (Standardized Domains)
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Formulate targeted nutrition interventions aimed directly at resolving the Etiology in the PES statement.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-2">
+                          Intervention Domain
+                        </label>
+                        <select
+                          value={chartData.intervention.domain}
+                          onChange={(e) => setChartData({ ...chartData, intervention: { ...chartData.intervention, domain: e.target.value, code: eNCPT_TERMS.interventions[e.target.value][0] } })}
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        >
+                          <option value="ND">Food and/or Nutrient Delivery (ND)</option>
+                          <option value="E">Nutrition Education (E)</option>
+                          <option value="C">Nutrition Counseling (C)</option>
+                          <option value="RC">Coordination of Nutrition Care (RC)</option>
+                        </select>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-2">
+                          eNCPT Standardized Intervention Code
+                        </label>
+                        <select
+                          value={chartData.intervention.code}
+                          onChange={(e) => setChartData({ ...chartData, intervention: { ...chartData.intervention, code: e.target.value } })}
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        >
+                          {eNCPT_TERMS.interventions[chartData.intervention.domain]?.map((item) => (
+                            <option key={item} value={item}>{item}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 md:col-span-2">
+                        <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-2">
+                          Prescription Details & Action Plan
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={chartData.intervention.details}
+                          onChange={(e) => setChartData({ ...chartData, intervention: { ...chartData.intervention, details: e.target.value } })}
+                          placeholder="Specific dietary modifications, calorie/macronutrient goals, supplement dosages, education topics..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 md:col-span-2">
+                        <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-2">
+                          Target Clinical Goal
+                        </label>
+                        <input
+                          type="text"
+                          value={chartData.intervention.targetGoal}
+                          onChange={(e) => setChartData({ ...chartData, intervention: { ...chartData.intervention, targetGoal: e.target.value } })}
+                          placeholder="Expected clinical outcome (e.g., HbA1c < 7.5%, 1800 kcal intake achieved)..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between pt-2">
+                      <button
+                        onClick={() => setActiveStep("ND")}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold transition"
+                      >
+                        &larr; Back to Diagnosis
+                      </button>
+                      <button
+                        onClick={() => setActiveStep("ME")}
+                        className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-md"
+                      >
+                        <span>Proceed to Monitoring & Evaluation</span>
+                        <span>&rarr;</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 4: MONITORING & EVALUATION (ME) */}
+                {activeStep === "ME" && (
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+                    <div className="border-b border-slate-100 dark:border-slate-700 pb-3">
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                        Step 4: Monitoring & Evaluation (Indicators & Status)
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Select standardized eNCPT monitoring indicators to track clinical progress over time.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2">
+                          Monitoring Indicator Domain
+                        </label>
+                        <select
+                          value={chartData.monitoring.indicator}
+                          onChange={(e) => setChartData({ ...chartData, monitoring: { ...chartData.monitoring, indicator: e.target.value } })}
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        >
+                          {eNCPT_TERMS.monitoringIndicators.map((ind) => (
+                            <option key={ind} value={ind}>{ind}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2">
+                          Evaluation Target Criteria
+                        </label>
+                        <input
+                          type="text"
+                          value={chartData.monitoring.targetCriteria}
+                          onChange={(e) => setChartData({ ...chartData, monitoring: { ...chartData.monitoring, targetCriteria: e.target.value } })}
+                          placeholder="Measurable benchmark value..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2">
+                          Target Evaluation Date
+                        </label>
+                        <input
+                          type="date"
+                          value={chartData.monitoring.targetDate}
+                          onChange={(e) => setChartData({ ...chartData, monitoring: { ...chartData.monitoring, targetDate: e.target.value } })}
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 font-mono"
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2">
+                          Progress Tracking Status
+                        </label>
+                        <select
+                          value={chartData.monitoring.status}
+                          onChange={(e) => setChartData({ ...chartData, monitoring: { ...chartData.monitoring, status: e.target.value } })}
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 font-semibold"
+                        >
+                          <option value="Resolved">Resolved (Problem fixed)</option>
+                          <option value="Improving">Improving (Positive progress)</option>
+                          <option value="Unchanged">Unchanged (No progress yet)</option>
+                          <option value="Deteriorated">Deteriorated (Worsened condition)</option>
+                        </select>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 md:col-span-2">
+                        <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2">
+                          Follow-up & Care Plan Notes
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={chartData.monitoring.followUpNotes}
+                          onChange={(e) => setChartData({ ...chartData, monitoring: { ...chartData.monitoring, followUpNotes: e.target.value } })}
+                          placeholder="Recheck lab schedules, next RD consultation timeframe, interprofessional follow-ups..."
+                          className="w-full p-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between pt-2">
+                      <button
+                        onClick={() => setActiveStep("NI")}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold transition"
+                      >
+                        &larr; Back to Intervention
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("ehrNote")}
+                        className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-md"
+                      >
+                        <span>View Final EHR Note</span>
+                        <Icon name="fileText" className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 2: JSON SCHEMA & LIVE SYNCHRONIZATION ENGINE          */}
+            {/* ======================================================== */}
+            {activeTab === "schema" && (
+              <div className="space-y-6">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Icon name="code" className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+                        Live JSON State Synchronization & Schema Inspector
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Two-way live data synchronization between UI form inputs and structured JSON payload.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleDownloadJSON}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+                      >
+                        <Icon name="download" className="w-3.5 h-3.5" />
+                        Export JSON
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* LIVE ACTIVE JSON DATA */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Live Clinical JSON Data</span>
+                        <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded font-bold">
+                          SYNCED
+                        </span>
+                      </div>
+                      <div className="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto max-h-[500px] border border-slate-800 shadow-inner">
+                        <pre>{JSON.stringify(chartData, null, 2)}</pre>
+                      </div>
+                    </div>
+
+                    {/* MASTER JSON SCHEMA */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Master eNCPT JSON Schema (Validation Rule)</span>
+                        <span className="text-[10px] font-mono bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 px-2 py-0.5 rounded font-bold">
+                          Draft-07
+                        </span>
+                      </div>
+                      <div className="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto max-h-[500px] border border-slate-800 shadow-inner">
+                        <pre>{JSON.stringify(MASTER_JSON_SCHEMA, null, 2)}</pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 3: POSTMAN API SIMULATOR                             */}
+            {/* ======================================================== */}
+            {activeTab === "postman" && (
+              <div className="space-y-6">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-700">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Icon name="send" className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+                        Embedded Postman API Runner & Collection Exporter
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Simulate EHR clinical ingestion REST endpoints and export valid Postman Collection v2.1 JSON files.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleExportPostmanCollection}
+                      className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md"
+                    >
+                      <Icon name="download" className="w-4 h-4" />
+                      Export Postman Collection v2.1 JSON
+                    </button>
+                  </div>
+
+                  {/* REQUEST BUILDER BAR */}
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <select
+                        value={apiMethod}
+                        onChange={(e) => setApiMethod(e.target.value)}
+                        className="px-3 py-2 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 font-mono"
+                      >
+                        <option value="POST">POST</option>
+                        <option value="GET">GET</option>
+                      </select>
+
+                      <select
+                        value={apiEndpoint}
+                        onChange={(e) => setApiEndpoint(e.target.value)}
+                        className="flex-1 px-3 py-2 text-xs font-mono font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500"
+                      >
+                        <option value="/api/v1/charting/adime">/api/v1/charting/adime (Submit ADIME Clinical Note)</option>
+                        <option value="/api/v1/encpt/terms">/api/v1/encpt/terms (Fetch eNCPT Standard Terms)</option>
+                        <option value="/api/v1/pes/validate">/api/v1/pes/validate (Validate PES Syntax)</option>
+                      </select>
+
+                      <button
+                        onClick={handleRunPostmanRequest}
+                        disabled={isApiLoading}
+                        className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 shadow"
+                      >
+                        {isApiLoading ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <>
+                            <Icon name="play" className="w-3.5 h-3.5" />
+                            <span>Send Request</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* REQUEST PAYLOAD PREVIEW */}
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Request Body Payload (JSON)</div>
+                      <div className="bg-slate-900 text-slate-200 p-3 rounded-lg font-mono text-xs max-h-36 overflow-y-auto border border-slate-800">
+                        {apiEndpoint === "/api/v1/encpt/terms" ? (
+                          <span className="text-slate-500 italic">// No request body needed for GET request</span>
+                        ) : apiEndpoint === "/api/v1/pes/validate" ? (
+                          <pre>{JSON.stringify(chartData.pes, null, 2)}</pre>
+                        ) : (
+                          <pre>{JSON.stringify(chartData, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RESPONSE DISPLAY */}
+                  {apiResponse && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${
+                            apiResponse.status < 300 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200"
+                          }`}>
+                            HTTP {apiResponse.status} {apiResponse.statusText}
+                          </span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">Latency: {apiResponse.responseTime}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto max-h-[400px] border border-slate-800 shadow-inner">
+                        <div className="text-[10px] text-slate-500 mb-2 border-b border-slate-800 pb-1">RESPONSE HEADERS & BODY:</div>
+                        <pre>{JSON.stringify(apiResponse, null, 2)}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 4: STANDARDIZED EHR NOTE OUTPUT & EXPORTS             */}
+            {/* ======================================================== */}
+            {activeTab === "ehrNote" && (
+              <div className="space-y-6">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+                  
+                  {/* ACTION TOOLBAR */}
+                  <div className="no-print flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-700">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Icon name="fileText" className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+                        Formatted EHR ADIME Clinical Note
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Standardized document compliant with hospital EHR charting standards.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={handleCopyNote}
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+                      >
+                        <Icon name="copy" className="w-4 h-4" />
+                        Copy Note
+                      </button>
+                      <button
+                        onClick={handleDownloadMarkdown}
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+                      >
+                        <Icon name="download" className="w-4 h-4" />
+                        Download Markdown
+                      </button>
+                      <button
+                        onClick={() => window.print()}
+                        className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow"
+                      >
+                        <Icon name="printer" className="w-4 h-4" />
+                        Print / Save PDF
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CLINICAL EHR NOTE DOCUMENT LAYOUT */}
+                  <div className="p-8 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-inner font-sans space-y-6">
+                    {/* DOCUMENT HEADER */}
+                    <div className="border-b-2 border-slate-300 dark:border-slate-700 pb-4 flex justify-between items-start">
+                      <div>
+                        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">CLINICAL NUTRITION ASSESSMENT & CARE PLAN</h1>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest font-semibold mt-0.5">eNCPT Standardized ADIME Note</p>
+                      </div>
+                      <div className="text-right text-xs text-slate-500 dark:text-slate-400 font-mono">
+                        <div>Date: {new Date().toLocaleDateString()}</div>
+                        <div>Status: Finalized</div>
+                      </div>
+                    </div>
+
+                    {/* PATIENT INFO BANNER */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                      <div>
+                        <span className="text-slate-400 uppercase font-semibold block text-[10px]">Patient Name</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">{chartData.patient.name}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase font-semibold block text-[10px]">MRN</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{chartData.patient.mrn}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase font-semibold block text-[10px]">Age / Gender</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{chartData.patient.age} yrs | {chartData.patient.gender}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase font-semibold block text-[10px]">Care Setting</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{chartData.patient.setting}</span>
+                      </div>
+                    </div>
+
+                    {/* SECTION 1: ASSESSMENT */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 border-b border-sky-200 dark:border-sky-800/50 pb-1">
+                        1. Nutrition Assessment (AD)
+                      </h3>
+                      <div className="grid grid-cols-1 gap-2.5 text-xs text-slate-700 dark:text-slate-300">
+                        <div><strong className="text-slate-900 dark:text-slate-100">Food/Nutrition History (FH):</strong> {chartData.assessment.FH}</div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Anthropometrics (AD):</strong> {chartData.assessment.AD}</div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Biochemical Data (BD):</strong> {chartData.assessment.BD}</div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Physical Findings (PD):</strong> {chartData.assessment.PD}</div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Client History (CH):</strong> {chartData.assessment.CH}</div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 2: DIAGNOSIS */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 border-b border-amber-200 dark:border-amber-800/50 pb-1">
+                        2. Nutrition Diagnosis (ND - PES Statement)
+                      </h3>
+                      <div className="p-4 bg-amber-50/80 dark:bg-amber-950/30 border-l-4 border-amber-500 rounded-r-xl text-xs font-medium text-amber-950 dark:text-amber-200 leading-relaxed font-mono">
+                        {pesValidation.formattedPES}
+                      </div>
+                    </div>
+
+                    {/* SECTION 3: INTERVENTION */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border-b border-emerald-200 dark:border-emerald-800/50 pb-1">
+                        3. Nutrition Intervention (NI)
+                      </h3>
+                      <div className="grid grid-cols-1 gap-2 text-xs text-slate-700 dark:text-slate-300">
+                        <div><strong className="text-slate-900 dark:text-slate-100">Standardized Domain & Code:</strong> <span className="font-mono font-semibold bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded text-emerald-800 dark:text-emerald-300">{chartData.intervention.domain} - {chartData.intervention.code}</span></div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Action Plan Details:</strong> {chartData.intervention.details}</div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Target Outcome Goal:</strong> {chartData.intervention.targetGoal}</div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 4: MONITORING & EVALUATION */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 border-b border-purple-200 dark:border-purple-800/50 pb-1">
+                        4. Nutrition Monitoring & Evaluation (ME)
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-700 dark:text-slate-300">
+                        <div><strong className="text-slate-900 dark:text-slate-100">Indicator:</strong> {chartData.monitoring.indicator}</div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Target Criteria:</strong> {chartData.monitoring.targetCriteria}</div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Target Re-evaluation Date:</strong> <span className="font-mono">{chartData.monitoring.targetDate}</span></div>
+                        <div><strong className="text-slate-900 dark:text-slate-100">Progress Status:</strong> <span className="font-semibold text-purple-700 dark:text-purple-300">{chartData.monitoring.status}</span></div>
+                        <div className="sm:col-span-2"><strong className="text-slate-900 dark:text-slate-100">Follow-up Plan:</strong> {chartData.monitoring.followUpNotes}</div>
+                      </div>
+                    </div>
+
+                    {/* CLINICIAN SIGNATURE BLOCK */}
+                    <div className="pt-6 border-t border-slate-200 dark:border-slate-700 flex justify-between items-end text-xs text-slate-500">
+                      <div>
+                        <div>Signed Electronically by:</div>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 mt-1">Nutrition Informatics Student / Clinical Dietitian</div>
+                      </div>
+                      <div className="text-right font-mono text-[10px]">
+                        Lab 3 Artifact | eNCPT Compliant
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 5: LAB GUIDE & CHECKLIST                             */}
+            {/* ======================================================== */}
+            {activeTab === "labGuide" && (
+              <div className="space-y-6">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+                  
+                  {/* LAB OVERVIEW HEADER */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Icon name="checklist" className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+                        110-Minute Interactive Lab Guide & Submissions Checklist
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Follow these steps sequentially to complete Lab 3 on Standardized Clinical Charting.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <div className="text-right">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Lab Completion</div>
+                        <div className="text-sm font-extrabold text-brand-600 dark:text-brand-400 font-mono">
+                          {Math.round((labChecklist.filter(i => i.done).length / labChecklist.length) * 100)}%
+                        </div>
+                      </div>
+                      <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center p-1">
+                        <div
+                          className="w-full h-full rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-xs"
+                          style={{
+                            clipPath: `inset(${100 - (labChecklist.filter(i => i.done).length / labChecklist.length) * 100}% 0 0 0)`
+                          }}
+                        >
+                          ✓
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CHECKLIST ITEMS */}
+                  <div className="space-y-3">
+                    {labChecklist.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          setLabChecklist(
+                            labChecklist.map(i => i.id === item.id ? { ...i, done: !i.done } : i)
+                          );
+                        }}
+                        className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                          item.done
+                            ? "bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50 text-slate-800 dark:text-slate-200"
+                            : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition ${
+                            item.done
+                              ? "bg-emerald-600 border-emerald-600 text-white"
+                              : "border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800"
+                          }`}>
+                            {item.done && <Icon name="check" className="w-3.5 h-3.5" />}
+                          </div>
+                          <span className={`text-sm font-semibold ${item.done ? "line-through opacity-75" : ""}`}>
+                            {item.text}
+                          </span>
+                        </div>
+
+                        <span className="text-xs font-mono font-medium bg-slate-200 dark:bg-slate-800 px-2.5 py-1 rounded-md text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          {item.time}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* LAB INSTRUCTIONS & OBJECTIVES */}
+                  <div className="p-5 bg-brand-50/60 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800/50 rounded-xl space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-brand-800 dark:text-brand-300">
+                      Key Learning Objectives for Lab 3:
+                    </h3>
+                    <ul className="text-xs text-brand-900 dark:text-brand-200 space-y-1.5 list-disc pl-5 leading-relaxed">
+                      <li>Understand structured standardized vocabulary in clinical health informatics (eNCPT terminology tree).</li>
+                      <li>Demonstrate guided construction and syntax validation of Nutrition PES Statements.</li>
+                      <li>Learn live JSON data serialization and schema compliance checking for interoperability between Web UI and Health Systems.</li>
+                      <li>Practice executing RESTful API calls for clinical data ingestion and exporting Postman collections for grading.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </main>
+
+          {/* FOOTER */}
+          <footer className="no-print border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 mt-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-500 dark:text-slate-400 flex flex-wrap justify-between items-center gap-2">
+              <div>Lab 3: Standardized Clinical Charting (eNCPT) &bull; Clinical Informatics Sandbox</div>
+              <div className="font-mono text-[10px]">JSON Schema v7 &bull; Postman v2.1 &bull; ADIME Compliant</div>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    // Render the React App
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
